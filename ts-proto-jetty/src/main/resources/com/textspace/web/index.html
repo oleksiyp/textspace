@@ -39,6 +39,8 @@
 
           var keypressHack;
 
+          var reloadBound;
+
           function init()
           {
               keypressHack = new Array();
@@ -150,13 +152,119 @@
                   }
                   return true;
               }
-              resizeCanvas();
 
+              initPosition();
+              resizeCanvas();
               initWebsocket();
 
               setup();
               setInterval( run , 33 );
           }
+
+          function initPosition() {
+              var hash = getHash();
+              if (hash != null) {
+                  var pos = fromHexPosition(hash);
+                  sceneX = pos.x;
+                  sceneY = pos.y;
+              }
+          }
+
+          function getHash() {
+              var hash = window.location.hash;
+              if (hash[0] == '#') {
+                  hash = hash.substring(1);
+              }
+              return hash;
+          }
+
+          function setHash(value) {
+              window.location.hash = value;
+          }
+
+          function toHexPosition(x, y) {
+              var result = "";
+
+              if (x < 0) {
+                  x = -x;
+                  result += "!";
+              }
+              if (y < 0) {
+                  y = -y;
+                  result += "@";
+              }
+
+              var res = new Array();
+
+              var i = 0;
+              while (x > 0) {
+                  if (x & 1) {
+                      res[i] = 1;
+                  }
+                  x >>= 1;
+                  i += 2;
+              }
+
+              i = 1;
+              while (y > 0) {
+                  if (y & 1) {
+                      res[i] = 1;
+                  }
+                  y >>= 1;
+                  i += 2;
+              }
+
+              var number = 0;
+              for (var i in res) {
+                  number |= (1 << i);
+              }
+
+              result += number.toString(16);
+              return result;
+          }
+
+          function fromHexPosition(position) {
+              var pos = position;
+              var negx = false;
+              var negy = false;
+
+              if (pos[0] == '!') {
+                  pos = pos.substring(1);
+                  negx = true;
+              }
+
+              if (pos[0] == '@') {
+                  pos = pos.substring(1);
+                  negy = true;
+              }
+
+              var number = parseInt(pos, 16);
+
+              var x = 0;
+              var y = 0;
+              var i = 0;
+              while (number > 0) {
+                  if (number & 1) {
+                      if (i % 2 == 0) {
+                          x |= (1 << (i >> 1));
+                      } else {
+                          y |= (1 << (i >> 1));
+                      }
+                  }
+                  i++;
+                  number >>= 1;
+              }
+
+              if (negx) {
+                  x = -x;
+              }
+              if (negy) {
+                  y = -y;
+              }
+
+              return {"x" : x, "y" : y};
+          }
+
 
           function arrowKeypressRepeat() {
               var repeat = false;
@@ -167,18 +275,21 @@
                   }
               }
               if (repeat) {
-                  setTimeout(arrowKeypressRepeat, 100);
+                  setTimeout(arrowKeypressRepeat, 50);
               }
           }
 
           function initWebsocket() {
               // "ws://localhost:8080";///
-              var location = document.location.toString().replace('http://','ws://').replace('https://','wss://');
+              var location = document.location.toString()
+                      .replace('http://','ws://')
+                      .replace('https://','wss://')
+                      .replace(document.location.hash, '');
               socket=new WebSocket(location);
-              socket.onclose=function(){
+              socket.onclose = function(){
                   socket = null;
               };
-              socket.onmessage=function(event){
+              socket.onmessage = function(event){
                   if (event.data) {
                       var msgs = event.data.split(";");
                       for (var i in msgs) {
@@ -186,10 +297,11 @@
                       }
                   }
               };
-              socket.onopen=function() {
+              socket.onopen = function() {
+                  sendReposition();
                   sendRange();
               };
-              socket.onerror=function(event) {
+              socket.onerror = function(event) {
                   alert("Could not connect!");
               }
           }
@@ -205,18 +317,18 @@
           function receiveRange(x, y, w, h, values) {
               var i = 0;
               for (var k = 0; k < w * h; ) {
-                  var count = values[i];
-                  var value = values[i + 1];
+                  var count = parseInt(values[i++]);
+                  var value = parseInt(values[i++]);
 
                   for (var j = 0; j < count; j++) {
-                      var x = k % w;
-                      var y = Math.floor(k / h);
+                      var ox = k % w;
+                      var oy = Math.floor(k / w);
 
                       var cell;
-                      if (values != 32) {
-                          cell = getCell(x + i, y + j, true);
+                      if (value != 32) {
+                          cell = getCell(x + ox, y + oy, true);
                       } else {
-                          cell = getCell(x + i, y + j, false);
+                          cell = getCell(x + ox, y + oy, false);
                       }
                       if (cell != null) {
                           cell.color = 'F';
@@ -226,8 +338,6 @@
 
                       k++;
                   }
-
-                  i += 2;
               }
               pickCursor();
               drawAll();
@@ -261,14 +371,24 @@
               socket.send("key," + charCode);
           }
 
+          function sendReposition() {
+              socket.send("reposition," + sceneX + "," + sceneY);
+          }
+
           function sendRange() {
               if (socket == null) {
                   return;
               }
-              var x = sceneX - deltaColumns;
-              var y = sceneY - deltaRows;
-              var w = deltaColumns * 2 + 1;
-              var h = deltaRows * 2 + 1;
+              var x = sceneX - deltaColumns * 2;
+              var y = sceneY - deltaRows * 2;
+              var w = deltaColumns * 4 + 1;
+              var h = deltaRows * 4 + 1;
+
+              reloadBound = new Bound(
+                      sceneX - deltaColumns,
+                      sceneY - deltaRows,
+                      deltaColumns * 2 + 1,
+                      deltaRows * 2 + 1);
 
               socket.send("range," + x + "," + y + "," + w + "," + h);
           }
@@ -313,6 +433,7 @@
               if (offX == 0 && offY == 0) {
                   return;
               }
+
               var ctx = getContext();
               unpaintCursor(ctx);
 
@@ -322,6 +443,12 @@
               cursorChar = (cell == null ? ' ' : cell.character);
 
               drawCursor(ctx);
+
+              if (reloadBound != null && !reloadBound.contains(sceneX, sceneY)) {
+                  sendRange();
+              }
+
+              setHash(toHexPosition(sceneX, sceneY));
           }
 
           function moveCursorTo(x, y) {
@@ -547,6 +674,19 @@
                   return String.fromCharCode(codePt);
               }
           }
+
+          function Bound(x, y, w, h){
+              this.x = x;
+              this.y = y;
+              this.w = w;
+              this.h = h;
+              this.contains = function(x,y) {
+                  return ((this.x <= x && x < this.x + this.w)
+                     && (this.y <= y && y < this.y + this.h));
+              }
+              return this;
+          }
+
       </script>
   </head>
   <body onload="init()" id="bodyElement">
