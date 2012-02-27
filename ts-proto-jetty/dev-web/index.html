@@ -1,0 +1,698 @@
+<html>
+  <head>
+      <title>textspace</title>
+      <style>
+          body, html, div, canvas {
+              margin: 0; padding: 0;
+          }
+      </style>
+      <script type="text/javascript">
+          var scene;
+
+          var sceneX;
+          var sceneY;
+
+          var inputX;
+          var inputY;
+
+          var symbolFont = 20;
+          var lineHeight = 1.2;
+
+          var font;
+
+          var canvas;
+          var viewportWidth;
+          var viewportHeight;
+
+          var symbolWidth;
+          var symbolHeight;
+          var deltaRows;
+          var deltaColumns;
+          var centerOffsetX;
+          var centerOffsetY;
+
+          var cursorBlinker;
+          var cursorBlocked;
+          var cursorColor;
+          var cursorTextColor;
+          var cursorChar;
+
+          var keypressHack;
+
+          var reloadBound;
+
+          function init()
+          {
+              keypressHack = new Array();
+              canvas = document.getElementById("mainCanvas");
+              if( !canvas.getContext )
+              {
+                  alert("No canvas support in your browser!");
+                  return;
+              }
+
+              if ("MozWebSocket" in window && !("WebSocket" in window)) {
+                  window.WebSocket = window.MozWebSocket;
+              }
+
+              if (!("WebSocket" in window))
+              {
+                  alert("No websocket support in your browser!");
+                  return;
+              }
+
+              scene = new Array();
+
+              sceneX = 0;
+              sceneY = 0;
+
+              inputX = 0;
+              inputY = 0;
+
+              cursorBlinker = true;
+              cursorBlocked = false;
+              cursorTextColor = '#000';
+              cursorColor = '#FFF';
+              cursorChar = ' ';
+              window.onresize = function() {
+                  resizeCanvas();
+              }
+
+              document.onkeypress = function(event) {
+                  event = event || window.event;
+                  var charCode;
+                  if (!event.which && ((event.charCode || event.charCode === 0) ? event.charCode: event.keyCode)) {
+                      event.which = event.charCode || event.keyCode;
+                  }
+                  charCode = event.which;
+                  if (charCode == keypressHack) {
+                      keypressHack = null;
+                  }
+                  if (specialCodes('press', event)
+                          || handleKeys('press', event)) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      return false;
+                  }
+                  if (keypressHack[charCode]) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      return false;
+                  }
+                  if (charCode != 0) {
+                      sendKey(charCode);
+                      event.preventDefault();
+                      event.stopPropagation();
+                      return false;
+                  }
+                  return true;
+              }
+              document.onkeydown = function (event) {
+                  event = event || window.event;
+                  var charCode;
+                  if (!event.which && ((event.charCode || event.charCode === 0) ? event.charCode: event.keyCode)) {
+                      event.which = event.charCode || event.keyCode;
+                  }
+                  charCode = event.which;
+                  if (specialCodes('down', event)
+                          || handleKeys('down', event)) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      return false;
+                  }
+                  if (37 <= charCode && charCode <= 40) {
+                      if (!keypressHack[charCode]) {
+                          keypressHack[charCode] = true;
+                          arrowKeypressRepeat();
+                      }
+                  } else {
+                      keypressHack[37] = false;
+                      keypressHack[38] = false;
+                      keypressHack[39] = false;
+                      keypressHack[40] = false;
+                  }
+
+                  return true;
+              }
+              document.onkeyup = function (event) {
+                  event = event || window.event;
+                  var charCode;
+                  if (!event.which && ((event.charCode || event.charCode === 0) ? event.charCode: event.keyCode)) {
+                      event.which = event.charCode || event.keyCode;
+                  }
+                  charCode = event.which;
+
+                  keypressHack[charCode] = false;
+
+                  if (specialCodes('up', event)
+                          || handleKeys('up', event)) {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      return false;
+                  }
+                  return true;
+              }
+
+              initPosition();
+              resizeCanvas();
+              initWebsocket();
+
+              setup();
+              setInterval( run , 33 );
+          }
+
+          function initPosition() {
+              var hash = getHash();
+              if (hash != null) {
+                  var pos = fromHexPosition(hash);
+                  sceneX = pos.x;
+                  sceneY = pos.y;
+              }
+          }
+
+          function getHash() {
+              var hash = window.location.hash;
+              if (hash[0] == '#') {
+                  hash = hash.substring(1);
+              }
+              return hash;
+          }
+
+          function setHash(value) {
+              window.location.hash = value;
+          }
+
+          function toHexPosition(x, y) {
+              var result = "";
+
+              if (x < 0) {
+                  x = -x;
+                  result += "!";
+              }
+              if (y < 0) {
+                  y = -y;
+                  result += "@";
+              }
+
+              var res = new Array();
+
+              var i = 0;
+              while (x > 0) {
+                  if (x & 1) {
+                      res[i] = 1;
+                  }
+                  x >>= 1;
+                  i += 2;
+              }
+
+              i = 1;
+              while (y > 0) {
+                  if (y & 1) {
+                      res[i] = 1;
+                  }
+                  y >>= 1;
+                  i += 2;
+              }
+
+              var number = 0;
+              for (var i in res) {
+                  number |= (1 << i);
+              }
+
+              result += number.toString(16);
+              return result;
+          }
+
+          function fromHexPosition(position) {
+              var pos = position;
+              var negx = false;
+              var negy = false;
+
+              if (pos[0] == '!') {
+                  pos = pos.substring(1);
+                  negx = true;
+              }
+
+              if (pos[0] == '@') {
+                  pos = pos.substring(1);
+                  negy = true;
+              }
+
+              var number = parseInt(pos, 16);
+
+              var x = 0;
+              var y = 0;
+              var i = 0;
+              while (number > 0) {
+                  if (number & 1) {
+                      if (i % 2 == 0) {
+                          x |= (1 << (i >> 1));
+                      } else {
+                          y |= (1 << (i >> 1));
+                      }
+                  }
+                  i++;
+                  number >>= 1;
+              }
+
+              if (negx) {
+                  x = -x;
+              }
+              if (negy) {
+                  y = -y;
+              }
+
+              return {"x" : x, "y" : y};
+          }
+
+
+          function arrowKeypressRepeat() {
+              var repeat = false;
+              for (var key = 37; key <= 40; key++) {
+                  if (keypressHack[key]) {
+                      sendKey(key);
+                      repeat = true;
+                  }
+              }
+              if (repeat) {
+                  setTimeout(arrowKeypressRepeat, 50);
+              }
+          }
+
+          function initWebsocket() {
+              // "ws://localhost:8080";///
+              var location = document.location.toString()
+                      .replace('http://','ws://')
+                      .replace('https://','wss://')
+                      .replace(document.location.hash, '');
+              socket=new WebSocket(location);
+              socket.onclose = function(){
+                  socket = null;
+              };
+              socket.onmessage = function(event){
+                  if (event.data) {
+                      var msgs = event.data.split(";");
+                      for (var i in msgs) {
+                          handleMessage(msgs[i]);
+                      }
+                  }
+              };
+              socket.onopen = function() {
+                  sendReposition();
+                  sendRange();
+              };
+              socket.onerror = function(event) {
+                  alert("Could not connect!");
+              }
+          }
+
+          function receiveCell(x, y, ch) {
+              putSymbol(x, y, fixedFromCharCode(ch));
+          }
+
+          function receiveReposition(x, y) {
+              moveCursorTo(x, y);
+          }
+
+          function receiveRange(x, y, w, h, values) {
+              var i = 0;
+              for (var k = 0; k < w * h; ) {
+                  var count = parseInt(values[i++]);
+                  var value = parseInt(values[i++]);
+
+                  for (var j = 0; j < count; j++) {
+                      var ox = k % w;
+                      var oy = Math.floor(k / w);
+
+                      var cell;
+                      if (value != 32) {
+                          cell = getCell(x + ox, y + oy, true);
+                      } else {
+                          cell = getCell(x + ox, y + oy, false);
+                      }
+                      if (cell != null) {
+                          cell.color = 'F';
+                          cell.background = '0';
+                          cell.character = fixedFromCharCode(value);
+                      }
+
+                      k++;
+                  }
+              }
+              pickCursor();
+              drawAll();
+          }
+
+          function handleMessage(msg) {
+              var arr = msg.split(",");
+              if (arr[0] == 'cell') {
+                  var x = parseInt(arr[1]);
+                  var y = parseInt(arr[2]);
+                  var ch = parseInt(arr[3]);
+                  receiveCell(x, y, ch)
+              } else if (arr[0] == 'range') {
+                  var x = parseInt(arr[1]);
+                  var y = parseInt(arr[2]);
+                  var w = parseInt(arr[3]);
+                  var h = parseInt(arr[4]);
+                  receiveRange(x,y,w,h,arr.slice(5));
+              } else if (arr[0] == 'reposition') {
+                  var x = parseInt(arr[1]);
+                  var y = parseInt(arr[2]);
+                  receiveReposition(x, y);
+              }
+
+          }
+
+          function sendKey(charCode) {
+              if (socket == null) {
+                  return;
+              }
+              socket.send("key," + charCode);
+          }
+
+          function sendReposition() {
+              socket.send("reposition," + sceneX + "," + sceneY);
+          }
+
+          function sendRange() {
+              if (socket == null) {
+                  return;
+              }
+              var x = sceneX - deltaColumns * 2;
+              var y = sceneY - deltaRows * 2;
+              var w = deltaColumns * 4 + 1;
+              var h = deltaRows * 4 + 1;
+
+              reloadBound = new Bound(
+                      sceneX - deltaColumns,
+                      sceneY - deltaRows,
+                      deltaColumns * 2 + 1,
+                      deltaRows * 2 + 1);
+
+              socket.send("range," + x + "," + y + "," + w + "," + h);
+          }
+
+          function getCell(x, y, create) {
+              var row = scene[y];
+              if (row == null) {
+                  if (!create) {
+                      return null;
+                  }
+                  scene[y] = row = new Array();
+              }
+              var cell = row[x];
+              if (cell == null) {
+                  if (!create) {
+                      return null;
+                  }
+                  row[x] = cell = new Array();
+                  cell.color = 'F';
+                  cell.background = '0';
+                  cell.character = ' ';
+              }
+              return cell;
+          }
+
+          function putSymbol(x, y, symbol) {
+              var ctx = getContext();
+              unpaintCursor(ctx);
+
+              var cell = getCell(x, y, true);
+              cell.color = 'F';
+              cell.background = '0';
+              cell.character = symbol;
+
+              drawSymbol(ctx, x - sceneX, y - sceneY);
+
+              pickCursor();
+              drawCursor(ctx);
+          }
+
+          function moveCursor(offX, offY) {
+              if (offX == 0 && offY == 0) {
+                  return;
+              }
+
+              var ctx = getContext();
+              unpaintCursor(ctx);
+
+              scroll(ctx, offX, offY);
+
+              var cell = getCell(sceneX, sceneY, false);
+              cursorChar = (cell == null ? ' ' : cell.character);
+
+              drawCursor(ctx);
+
+              if (reloadBound != null && !reloadBound.contains(sceneX, sceneY)) {
+                  sendRange();
+              }
+
+              setHash(toHexPosition(sceneX, sceneY));
+          }
+
+          function moveCursorTo(x, y) {
+              moveCursor(x - sceneX, y - sceneY);
+          }
+
+
+          function handleKeys(eventType, event) {
+              return false;
+          }
+
+          var specialCharMode;
+          var specialChars;
+          function specialCodes(eventType, event) {
+              if (eventType == 'down' && event.keyCode == 18) {
+                  specialCharMode = true;
+                  specialChars = "";
+                  return true;
+              } else if (eventType == 'up' && event.keyCode == 18) {
+                  if (specialCharMode && specialChars.length > 0) {
+                      specialCharMode = false;
+                      var code = parseInt(specialChars, 8);
+                      sendKey(code);
+                  }
+                  return true;
+              } else if (specialCharMode &&
+                      (eventType == 'up' && eventType == 'down') &&
+                      (event.charCode >= 96 && event.keyCode <= 105)) {
+                  return true;
+              } else if (specialCharMode &&
+                      eventType == 'press'  &&
+                      (event.charCode >= 48 && event.charCode <= 57)) {
+                  specialChars += String.fromCharCode(event.charCode);
+                  return true;
+              }
+              return false;
+          }
+
+          function resizeCanvas() {
+              // The more standards compliant browsers (mozilla/netscape/opera/chrome/IE7) use window.innerWidth and window.innerHeight
+              if (typeof window.innerWidth != 'undefined') {
+                  viewportWidth = window.innerWidth;
+                  viewportHeight = window.innerHeight;
+              }
+              // IE6 in standards compliant mode (i.e. with a valid doctype as the first line in the document)
+              else if (typeof document.documentElement != 'undefined' && typeof document.documentElement.clientWidth != 'undefined' && document.documentElement.clientWidth != 0) {
+                  viewportWidth = document.documentElement.clientWidth;
+                  viewportHeight = document.documentElement.clientHeight;
+              }
+              // older versions of IE
+              else {
+                  viewportWidth = document.getElementsByTagName('body')[0].clientWidth;
+                  viewportHeight = document.getElementsByTagName('body')[0].clientHeight;
+              }
+
+              canvas = document.getElementById("mainCanvas");
+
+              viewportWidth = Math.round(viewportWidth - 1);
+              viewportHeight = Math.round(viewportHeight - 1);
+
+              canvas.width = viewportWidth;
+              canvas.height = viewportHeight;
+              
+              var ctx = canvas.getContext('2d');
+
+              ctx.font = font = symbolFont+'px/'+lineHeight+'em monospace';
+              symbolWidth = Math.round(ctx.measureText('m').width);
+              symbolHeight = Math.round(symbolFont * lineHeight);
+
+
+              centerOffsetX = Math.floor((viewportWidth - symbolWidth) / 2);
+              centerOffsetY = Math.floor((viewportHeight - symbolHeight) / 2);
+
+              deltaColumns = Math.ceil(centerOffsetX / symbolWidth);
+              deltaRows = Math.ceil(centerOffsetY / symbolHeight);
+
+              ctx.setTransform(1, 0, 0, 1, 0, 0);
+              ctx.fillStyle = "#FFF";
+              ctx.fillRect(0, 0, viewportWidth, viewportHeight);
+
+              drawAll();
+          }
+
+
+          function getContext() {
+              var ctx = canvas.getContext('2d');
+              ctx.setTransform(1, 0, 0, 1, 0, 0);
+              ctx.translate(centerOffsetX, centerOffsetY);
+              ctx.font = font;
+              ctx.textAlign = 'start';
+              ctx.textBaseline = 'top';
+              return ctx;
+          }
+
+          function setup() {
+              setInterval(cursorTimer, 500);
+          }
+
+          function cursorTimer() {
+              cursorBlinker = !cursorBlinker;
+              drawCursor(getContext());
+          }
+
+          function pickCursor() {
+              var cell = getCell(sceneX, sceneY, false);
+              cursorChar = cell == null ? ' ' : cell.character;
+          }
+
+          function drawCursor(ctx) {
+              if (cursorBlocked) {
+                  ctx.fillStyle = cursorColor;
+                  ctx.fillRect(0, -4, symbolWidth, symbolHeight);
+                  ctx.fillStyle = cursorTextColor;
+                  ctx.fillText(cursorChar, 0, 0);
+                  ctx.strokeStyle = cursorTextColor;
+                  ctx.strokeRect(1, -2, symbolWidth - 2, symbolHeight - 4);
+              } else {
+                  ctx.fillStyle = cursorBlinker ? cursorColor : cursorTextColor;
+                  ctx.fillRect(0, -4, symbolWidth, symbolHeight);
+                  ctx.fillStyle = cursorBlinker ? cursorTextColor : cursorColor;
+                  ctx.fillText(cursorChar, 0, 0);
+              }
+          }
+
+          function unpaintCursor(ctx) {
+              drawSymbol(ctx, 0, -1)
+              drawSymbol(ctx, 0, 0)
+          }
+
+          function scroll(ctx, offX, offY) {
+              ctx.save();
+              ctx.setTransform(1, 0, 0, 1, 0, 0);
+              ctx.drawImage(canvas, -symbolWidth * offX, -symbolHeight * offY);
+              ctx.restore();
+
+              sceneX += offX;
+              sceneY += offY;
+
+              offX = -offX;
+              offY = -offY;
+
+              var top = offY == 0 ? 1 :
+                      offY < 0 ?
+                      Math.max(deltaRows + offY, -deltaRows) :
+                      -deltaRows;
+              var bottom = offY == 0 ? -1 :
+                      offY < 0 ?
+                      deltaRows :
+                      Math.min(-deltaRows + offY, deltaRows);
+
+              var left = offX == 0 ? 1 :
+                      offX < 0 ?
+                      Math.max(deltaColumns + offX, -deltaColumns) :
+                      -deltaColumns;
+              var right = offX == 0 ? -1 :
+                      offX < 0 ?
+                      deltaColumns :
+                      Math.min(-deltaColumns + offX, deltaColumns);
+
+              //ctx.fillStyle = '#FFF';
+              //ctx.fillRect(-viewportWidth / 2, -viewportHeight / 2, viewportWidth, viewportHeight);
+
+
+              for (var i = left; i <= right; i++) {
+                  for (var j = top; j <= bottom; j++) {
+                      drawSymbol(ctx, i, j, 'red');
+                  }
+              }
+              for (var i = -deltaColumns; i < left; i++) {
+                  for (var j = top; j <= bottom; j++) {
+                      drawSymbol(ctx, i, j, 'blue');
+                  }
+              }
+              for (var i = right + 1; i <= deltaColumns; i++) {
+                  for (var j = top; j <= bottom; j++) {
+                      drawSymbol(ctx, i, j, 'green');
+                  }
+              }
+              for (var j = -deltaRows; j < top; j++) {
+                  for (var i = left; i <= right; i++) {
+                      drawSymbol(ctx, i, j, 'cyan');
+                  }
+              }
+              for (var j = bottom + 1; j <= deltaRows; j++) {
+                  for (var i = left; i <= right; i++) {
+                      drawSymbol(ctx, i, j, 'orange');
+                  }
+              }
+          }
+
+          function drawSymbol(ctx, i, j, bg) {
+              var cell = getCell(i + sceneX, j + sceneY, false);
+              var char = cell == null ? ' ' : cell.character;
+              ctx.fillStyle = '#FFF'; // bg ? bg : '#FFF';
+              ctx.fillRect(i * symbolWidth, j * symbolHeight, symbolWidth, symbolHeight);
+              ctx.fillStyle = '#000';
+              ctx.fillText(char, i * symbolWidth, j * symbolHeight);
+          }
+
+          function drawAll() {
+              var ctx = getContext();
+
+              //ctx.translate(viewportWidth / 2, viewportHeight / 2);
+
+              ctx.fillStyle = "#000";
+              for (var i = -deltaColumns; i <= deltaColumns; i++) {
+                  for (var j = -deltaRows; j <= deltaRows; j++) {
+                      drawSymbol(ctx, i, j);
+                  }
+              }
+
+              drawCursor(ctx);
+          }
+
+          function run() {
+          }
+
+          function fixedFromCharCode(codePt) {
+              if (codePt > 0xFFFF) {
+                  codePt -= 0x10000;
+                  return String.fromCharCode(0xD800 + (codePt >> 10), 0xDC00 + (codePt & 0x3FF));
+              } else {
+                  return String.fromCharCode(codePt);
+              }
+          }
+
+          function Bound(x, y, w, h){
+              this.x = x;
+              this.y = y;
+              this.w = w;
+              this.h = h;
+              this.contains = function(x,y) {
+                  return ((this.x <= x && x < this.x + this.w)
+                     && (this.y <= y && y < this.y + this.h));
+              }
+              return this;
+          }
+
+      </script>
+  </head>
+  <body onload="init()" id="bodyElement">
+    <div id="message" />
+    <canvas id="mainCanvas" width="100" height="100" style="z-index: 1">
+
+    </canvas>
+  </body>
+</html>
