@@ -123,7 +123,7 @@
                   if (37 <= charCode && charCode <= 40) {
                       if (!keypressHack[charCode]) {
                           keypressHack[charCode] = true;
-                          arrowKeypressRepeat();
+                          setTimeout(arrowKeypressRepeat, 0)
                       }
                   } else {
                       keypressHack[37] = false;
@@ -281,10 +281,7 @@
 
           function initWebsocket() {
               // "ws://localhost:8080";///
-              var location = document.location.toString()
-                      .replace('http://','ws://')
-                      .replace('https://','wss://')
-                      .replace(document.location.hash, '');
+              var location = "ws://textspace.jelastic.com/socket";
               socket=new WebSocket(location);
               socket.onclose = function(){
                   socket = null;

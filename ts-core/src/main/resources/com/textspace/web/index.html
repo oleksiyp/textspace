@@ -41,8 +41,6 @@
 
           var reloadBound;
 
-          var hashUpdateTimeoutId;
-
           function init()
           {
               keypressHack = new Array();
@@ -125,7 +123,7 @@
                   if (37 <= charCode && charCode <= 40) {
                       if (!keypressHack[charCode]) {
                           keypressHack[charCode] = true;
-                          setTimeout(arrowKeypressRepeat, 100);
+                          setTimeout(arrowKeypressRepeat, 0)
                       }
                   } else {
                       keypressHack[37] = false;
@@ -270,18 +268,14 @@
 
           function arrowKeypressRepeat() {
               var repeat = false;
-              var upDown = false;
               for (var key = 37; key <= 40; key++) {
                   if (keypressHack[key]) {
                       sendKey(key);
                       repeat = true;
-                      if (key == 38 || key == 40) {
-                          upDown = true;
-                      }
                   }
               }
               if (repeat) {
-                  setTimeout(arrowKeypressRepeat, upDown ? 100 : 50);
+                  setTimeout(arrowKeypressRepeat, 50);
               }
           }
 
@@ -454,12 +448,7 @@
                   sendRange();
               }
 
-              if (hashUpdateTimeoutId) {
-                clearTimeout(hashUpdateTimeoutId);
-              }
-              hashUpdateTimeoutId = setTimeout(function() {
-                  setHash(toHexPosition(sceneX, sceneY));
-              }, 400);
+              setHash(toHexPosition(sceneX, sceneY));
           }
 
           function moveCursorTo(x, y) {

@@ -2,19 +2,24 @@
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <groupId>ts-proto-jetty</groupId>
+    <groupId>com.textspace</groupId>
     <artifactId>ts-proto-jetty</artifactId>
-    <version>1.0</version>
+    <version>0.2</version>
     <packaging>jar</packaging>
 
     <name>ts-proto-jetty</name>
-    <url>http://maven.apache.org</url>
+    <description>Textspace on jetty based websockets</description>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     </properties>
 
     <dependencies>
+        <dependency>
+            <groupId>com.textspace</groupId>
+            <artifactId>ts-core</artifactId>
+            <version>0.2</version>
+        </dependency>
         <dependency>
             <groupId>org.eclipse.jetty</groupId>
             <artifactId>jetty-server</artifactId>

@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit;
 
 public class TextSpaceServlet extends WebSocketServlet
 {
-    private static final String TEXT_SPACE_CENTER = "com.textspace.space.TextSpaceCenter";
+    private static final String TEXT_SPACE_CENTER = "TextSpaceCenter";
 
     private static final File DATA_FILE = new File("data.obj");
 
