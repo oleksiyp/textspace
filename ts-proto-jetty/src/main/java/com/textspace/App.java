@@ -33,7 +33,7 @@ public class App extends AbstractHandler {
     }
 
     private static void startJetty() throws Exception {
-        Server server = new Server(8080);
+        Server server = new Server(80);
         ServletContextHandler context = new ServletContextHandler(ServletContextHandler.SESSIONS);
         context.setContextPath("/");
         context.addServlet(TextSpaceServlet.class, "/*");

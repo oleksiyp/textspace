@@ -8,6 +8,8 @@ import com.textspace.elements.CellRange;
 import org.eclipse.jetty.websocket.WebSocket;
 
 import java.io.IOException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
 * User: captain-protect
@@ -16,6 +18,8 @@ import java.io.IOException;
 */
 public class TextSpaceWebSocket implements WebSocket, WebSocket.OnTextMessage, TextSpaceOutput
 {
+    private static final Logger LOGGER = Logger.getLogger(TextSpaceWebSocket.class.getName());
+
     private Connection connection;
 
     private final TextSpaceInput input;
@@ -98,8 +102,9 @@ public class TextSpaceWebSocket implements WebSocket, WebSocket.OnTextMessage, T
         builder.append(",");
         builder.append(Integer.toString(value));
         builder.append(",");
-
-        System.out.println(builder.toString());
+        if (LOGGER.isLoggable(Level.FINEST)) {
+            LOGGER.log(Level.FINEST, "Command sent: " + builder.toString());
+        }
         connection.sendMessage(builder.toString());
     }
 
@@ -111,7 +116,9 @@ public class TextSpaceWebSocket implements WebSocket, WebSocket.OnTextMessage, T
         builder.append(Integer.toString(coord.getY()));
         builder.append(",");
         builder.append(Integer.toString(ch));
-        System.out.println(builder.toString());
+        if (LOGGER.isLoggable(Level.FINEST)) {
+            LOGGER.log(Level.FINEST, "Command sent: " + builder.toString());
+        }
         connection.sendMessage(builder.toString());
     }
 
@@ -121,7 +128,9 @@ public class TextSpaceWebSocket implements WebSocket, WebSocket.OnTextMessage, T
         builder.append(Integer.toString(coord.getX()));
         builder.append(",");
         builder.append(Integer.toString(coord.getY()));
-        System.out.println(builder.toString());
+        if (LOGGER.isLoggable(Level.FINEST)) {
+            LOGGER.log(Level.FINEST, "Command sent: " + builder.toString());
+        }
         connection.sendMessage(builder.toString());
     }
 
